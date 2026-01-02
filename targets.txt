@@ -1,0 +1,8 @@
+Coffee (コーヒー)
+Book (本)
+Keys (鍵)
+Bottle (ボトル)
+Phone (スマホ)
+Pen (ペン)
+Hat (帽子)
+Shoe (靴)
