@@ -1,9 +1,37 @@
 import os
+from pathlib import Path
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 
 # 環境変数から取得
+endpoint = os.getenv("AZURE_ENDPOINT")
+key = os.getenv("AZURE_KEY")
+image_url = os.getenv("IMAGE_URL")
+
+
+# ローカルの .env ファイルが存在すれば読み込む（簡易パーサ）
+def _load_env_file(path):
+    try:
+        p = Path(path)
+        if p.exists():
+            with p.open(encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        v = v.strip().strip('"').strip("'")
+                        os.environ.setdefault(k.strip(), v)
+    except Exception:
+        pass
+
+
+# プロジェクトルートの .env を読み込む（存在すれば）
+_load_env_file(Path(__file__).parent / ".env")
+
+# 必須パラメータの確認
 endpoint = os.getenv("AZURE_ENDPOINT")
 key = os.getenv("AZURE_KEY")
 image_url = os.getenv("IMAGE_URL")
