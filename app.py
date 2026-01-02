@@ -91,26 +91,37 @@ if uploaded_file is not None:
             analysis = client.analyze_image_in_stream(io.BytesIO(uploaded_bytes), visual_features=[VisualFeatureTypes.tags, VisualFeatureTypes.description])
 
             # --- デバッグ出力: 生のレスポンスを確認 ---
-            st.write("---- DEBUG: raw analysis object ----")
+            # デバッグ出力: デフォルトは折りたたみ（サイドバーで切替可）。
+            # 環境変数 SHOW_DEBUG=1 で初期展開可能。
             try:
-                # SDK のオブジェクトをそのまま表示
-                st.write(analysis)
+                show_debug_env = os.getenv("SHOW_DEBUG", "0").lower() in ("1", "true", "yes")
+            except Exception:
+                show_debug_env = False
 
-                # 可能なら辞書化して詳細を表示
-                if hasattr(analysis, "as_dict"):
-                    try:
-                        st.write(analysis.as_dict())
-                    except Exception:
-                        st.write("as_dict() 呼び出しで例外が発生しました")
-                else:
-                    # 最低限属性一覧を表示（ネストが深い場合は省略されます）
-                    try:
-                        attrs = [a for a in dir(analysis) if not a.startswith("__")]
-                        st.write(attrs)
-                    except Exception:
-                        st.write("属性一覧の取得に失敗しました")
-            except Exception as e:
-                st.write(f"DEBUG 出力エラー: {e}")
+            # サイドバーのトグルで表示を切替（デフォルトは env に従う）
+            try:
+                show_debug = st.sidebar.checkbox("Show debug output", value=show_debug_env)
+            except Exception:
+                show_debug = show_debug_env
+
+            with st.expander("DEBUG: raw analysis object (click to expand)", expanded=show_debug):
+                st.write("---- DEBUG: raw analysis object ----")
+                try:
+                    st.write(analysis)
+
+                    if hasattr(analysis, "as_dict"):
+                        try:
+                            st.write(analysis.as_dict())
+                        except Exception:
+                            st.write("as_dict() 呼び出しで例外が発生しました")
+                    else:
+                        try:
+                            attrs = [a for a in dir(analysis) if not a.startswith("__")]
+                            st.write(attrs)
+                        except Exception:
+                            st.write("属性一覧の取得に失敗しました")
+                except Exception as e:
+                    st.write(f"DEBUG 出力エラー: {e}")
 
             # --- シンプルなタグ抽出と照合 ---
             tags = []
