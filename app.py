@@ -3,9 +3,9 @@ import random
 from pathlib import Path
 import streamlit as st
 
-from azure.cognitiveservices.vision.computervision import ComputerVisionClient
-from azure.cognitiveservices.vision.computervision.models import VisualFeatureTypes
-from msrest.authentication import CognitiveServicesCredentials
+from azure.ai.vision.imageanalysis import ImageAnalysisClient
+from azure.ai.vision.imageanalysis.models import VisualFeatures
+from azure.core.credentials import AzureKeyCredential
 
 # ローカルの .env ファイルが存在すれば読み込む（簡易パーサ）
 def _load_env_file(path):
@@ -43,7 +43,7 @@ if not ENDPOINT or not KEY:
     st.stop()
 
 # AIクライアントの初期化（ENDPOINT/KEY が設定されていれば接続を試みます）
-client = ComputerVisionClient(ENDPOINT, CognitiveServicesCredentials(KEY))
+client = ImageAnalysisClient(endpoint=ENDPOINT, credential=AzureKeyCredential(KEY))
 
 # 3. ゲーム画面の表示
 # ターゲットリストを外部ファイルで管理（targets.txt）。見つからない場合はデフォルトを使用。
@@ -87,8 +87,12 @@ if uploaded_file is not None:
         st.write("画像を受け取りました。Azureで解析する場合はエンドポイントとキーを設定してください。")
     else:
         try:
-            # 画像バイト列を渡す（ComputerVision の analyze_image_in_stream を使用）
-            analysis = client.analyze_image_in_stream(io.BytesIO(uploaded_bytes), visual_features=[VisualFeatureTypes.tags, VisualFeatureTypes.description])
+            # 画像バイト列を渡す（ImageAnalysisClient の analyze を使用）
+            try:
+                analysis = client.analyze(image=io.BytesIO(uploaded_bytes), visual_features=[VisualFeatures.TAGS, VisualFeatures.CAPTION])
+            except TypeError:
+                # 一部のバージョンや呼び出しシグネチャの違いに備え、位置引数でも試す
+                analysis = client.analyze(io.BytesIO(uploaded_bytes), visual_features=[VisualFeatures.TAGS, VisualFeatures.CAPTION])
 
             # --- デバッグ出力: 生のレスポンスを確認 ---
             # デバッグ出力: デフォルトは折りたたみ（サイドバーで切替可）。
@@ -123,26 +127,35 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.write(f"DEBUG 出力エラー: {e}")
 
-            # --- シンプルなタグ抽出と照合 ---
+            # --- シンプルなタグ抽出と照合 (新しい ImageAnalysisClient 互換) ---
             tags = []
             caption_text = ""
 
-            # まず標準的な tags を試す（多くの SDK で使われる）
-            if getattr(analysis, "tags", None):
+            # 新しい SDK の場合: result.tags.list, result.caption が使える
+            try:
+                if getattr(analysis, "tags", None) and getattr(analysis.tags, "list", None):
+                    tags = [getattr(t, "name", str(t)).lower() for t in analysis.tags.list if t is not None]
+            except Exception:
+                tags = []
+
+            try:
+                if getattr(analysis, "caption", None):
+                    caption_text = getattr(analysis.caption, "text", "").lower()
+            except Exception:
+                caption_text = ""
+
+            # 互換性のため、古い SDK のフォーマットにも対応
+            if not tags:
                 try:
-                    tags = [getattr(t, "name", str(t)).lower() for t in analysis.tags if t is not None]
+                    if getattr(analysis, "tags", None):
+                        tags = [getattr(t, "name", str(t)).lower() for t in analysis.tags if t is not None]
                 except Exception:
                     tags = []
 
-            # キャプションをシンプルに取得
-            if getattr(analysis, "captions", None):
+            if not caption_text:
                 try:
-                    caption_text = getattr(analysis.captions[0], "text", "").lower()
-                except Exception:
-                    caption_text = ""
-            elif getattr(analysis, "description", None) and getattr(analysis.description, "captions", None):
-                try:
-                    caption_text = getattr(analysis.description.captions[0], "text", "").lower()
+                    if getattr(analysis, "captions", None):
+                        caption_text = getattr(analysis.captions[0], "text", "").lower()
                 except Exception:
                     caption_text = ""
 
