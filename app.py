@@ -1,5 +1,6 @@
 import os
 import random
+import logging
 from pathlib import Path
 import streamlit as st
 
@@ -94,38 +95,21 @@ if uploaded_file is not None:
                 # 一部のバージョンや呼び出しシグネチャの違いに備え、位置引数でも試す
                 analysis = client.analyze(io.BytesIO(uploaded_bytes), visual_features=[VisualFeatures.TAGS, VisualFeatures.CAPTION])
 
-            # --- デバッグ出力: 生のレスポンスを確認 ---
-            # デバッグ出力: デフォルトは折りたたみ（サイドバーで切替可）。
-            # 環境変数 SHOW_DEBUG=1 で初期展開可能。
+            # --- デバッグ出力: ユーザーには表示しない（サーバー側ログに出力） ---
+            # 環境変数 SHOW_DEBUG=1 が設定されている場合は、logging.debug により
+            # サーバー側のログへ出力します（UI には表示しません）。
             try:
-                show_debug_env = os.getenv("SHOW_DEBUG", "0").lower() in ("1", "true", "yes")
-            except Exception:
-                show_debug_env = False
-
-            # サイドバーのトグルで表示を切替（デフォルトは env に従う）
-            try:
-                show_debug = st.sidebar.checkbox("Show debug output", value=show_debug_env)
-            except Exception:
-                show_debug = show_debug_env
-
-            with st.expander("DEBUG: raw analysis object (click to expand)", expanded=show_debug):
-                st.write("---- DEBUG: raw analysis object ----")
-                try:
-                    st.write(analysis)
-
-                    if hasattr(analysis, "as_dict"):
-                        try:
-                            st.write(analysis.as_dict())
-                        except Exception:
-                            st.write("as_dict() 呼び出しで例外が発生しました")
-                    else:
-                        try:
+                if os.getenv("SHOW_DEBUG", "0").lower() in ("1", "true", "yes"):
+                    try:
+                        if hasattr(analysis, "as_dict"):
+                            logging.getLogger(__name__).debug("Analysis as dict: %s", analysis.as_dict())
+                        else:
                             attrs = [a for a in dir(analysis) if not a.startswith("__")]
-                            st.write(attrs)
-                        except Exception:
-                            st.write("属性一覧の取得に失敗しました")
-                except Exception as e:
-                    st.write(f"DEBUG 出力エラー: {e}")
+                            logging.getLogger(__name__).debug("Analysis attrs: %s", attrs)
+                    except Exception as e:
+                        logging.getLogger(__name__).debug("DEBUG logging failed: %s", e)
+            except Exception:
+                pass
 
             # --- シンプルなタグ抽出と照合 (新しい ImageAnalysisClient 互換) ---
             tags = []
@@ -159,8 +143,17 @@ if uploaded_file is not None:
                 except Exception:
                     caption_text = ""
 
-            st.write("検出タグ:", tags)
-            st.write("生成キャプション:", caption_text)
+            # チェックボックスはサイドバーに移動（メイン画面には表示しない）
+            # デフォルトは非表示（ユーザーが明示的に有効化するまで隠す）
+            try:
+                show_info = st.sidebar.checkbox("検出タグと生成キャプションを表示する", value=False)
+            except Exception:
+                show_info = False
+
+            if show_info:
+                st.write("検出タグ:", tags)
+                st.write("生成キャプション:", caption_text)
+            # 非表示時は何も表示しない（画面をスッキリさせる）
 
             # 照合は単純なキーワード包含チェック（現在のターゲットからキーワードを派生）
             ct = st.session_state.get("current_target", "coffee").lower()
